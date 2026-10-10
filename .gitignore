@@ -1,0 +1,5 @@
+# Runtime cache (access token, presence)
+.cache/
+
+# Local configuration with secrets, see config.example.php
+config.php

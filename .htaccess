@@ -1,0 +1,10 @@
+# Only teamsstatus.php is public. Everything else redirects to the GitHub repository.
+
+Options -Indexes
+
+RewriteEngine On
+
+# The cache holds the Graph access token: never serve it.
+RewriteRule ^\.cache(/|$) - [F,L]
+
+RewriteRule !^teamsstatus\.php$ https://github.com/DOEBELING/Teamsstatus.Doebeling.de [R=301,L]
