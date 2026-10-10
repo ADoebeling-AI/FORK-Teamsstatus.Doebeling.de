@@ -83,6 +83,45 @@ All other requests to the domain redirect to this GitHub repository. If you run 
 
 Open `teamsstatus.php?user=name@example.com` in your browser to test it. If the icon has no badge, look for lines starting with `teamsstatus:` in the PHP error log.
 
+Instead of steps 3 and 4 you can let GitHub Actions do the work, see the next section.
+
+## Deployment with GitHub Actions
+
+The workflow [`deploy.yml`](.github/workflows/deploy.yml) runs on every push to `main`. You can also start it by hand under **Actions → Deploy → Run workflow**. It:
+
+1. checks the PHP syntax,
+2. writes `config.php` from the repository settings below,
+3. uploads `teamsstatus.php`, `.htaccess` and `config.php` with FTPS (FTP over TLS, the server certificate is checked),
+4. checks that the icon URL returns an SVG (optional).
+
+Each file is uploaded to a temporary name first and then renamed, so the icon is never missing during an upload. The workflow never deletes files on the server, so the cache survives. If you remove a file from the repository, delete it on the server by hand.
+
+Add these settings under **Settings → Secrets and variables → Actions**. Without `FTP_HOST` the workflow skips the upload, e.g. in forks.
+
+| Name | Type | Example |
+| --- | --- | --- |
+| `FTP_HOST` | Variable | `www123.your-server.de` |
+| `FTP_USER` | Variable | User name of the FTP account |
+| `FTP_PASSWORD` | Secret | Password of the FTP account |
+| `FTP_DIR` | Variable, optional | Target directory, default `/` |
+| `ENTRA_TENANT_ID` | Variable | Directory (tenant) ID |
+| `ENTRA_CLIENT_ID` | Variable | Application (client) ID |
+| `ENTRA_CLIENT_SECRET` | Secret | Value of the client secret |
+| `TEAMSSTATUS_USERS` | Variable | `{"name@example.com": "00000000-0000-0000-0000-000000000000"}` |
+| `TEAMSSTATUS_URL` | Variable, optional | `https://teamsstatus.example.com/teamsstatus.php` |
+
+Use a separate FTP account that can only access the directory of your (sub)domain, and keep `FTP_DIR` at `/`. Then a wrong setting can never overwrite other websites in the same web space.
+
+When the client secret expires, add the new value as `ENTRA_CLIENT_SECRET` and run the workflow again.
+
+### Hetzner Webhosting
+
+All Hetzner web hosting packages support FTPS. SSH is only available in larger packages, so the workflow does not need it.
+
+- **Host:** the server name `wwwXXX.your-server.de` from the access details in konsoleH. The TLS certificate is valid for this name, not for your own domain.
+- **FTP account:** create an additional FTP account in konsoleH and limit it to the directory of the subdomain.
+- **PHP:** choose PHP 8.1 or newer for the subdomain.
+
 ## Privacy and security
 
 - With **Presence.Read.All**, the app can read the presence of every user in your tenant. The script only answers for the addresses in the allowlist. For all other addresses it returns the icon without a badge, so nobody can probe the status of your colleagues.

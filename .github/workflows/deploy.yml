@@ -1,0 +1,73 @@
+name: Deploy
+
+# Uploads the status icon to the web space on every push to main.
+# Settings are explained in README.md, section "Deployment".
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # Copies of this repository without deployment settings skip the job.
+    if: vars.FTP_HOST != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check PHP syntax
+        run: php -l teamsstatus.php
+
+      - name: Build release
+        env:
+          ENTRA_TENANT_ID: ${{ vars.ENTRA_TENANT_ID }}
+          ENTRA_CLIENT_ID: ${{ vars.ENTRA_CLIENT_ID }}
+          ENTRA_CLIENT_SECRET: ${{ secrets.ENTRA_CLIENT_SECRET }}
+          TEAMSSTATUS_USERS: ${{ vars.TEAMSSTATUS_USERS }}
+        run: |
+          mkdir release
+          cp teamsstatus.php .htaccess release/
+          php .github/scripts/write-config.php > release/config.php
+
+      - name: Install lftp
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+
+      # FTPS with certificate check. Each file is uploaded to a temporary name and then renamed,
+      # so the icon never goes missing. Nothing is deleted on the server, so the cache survives.
+      - name: Upload via FTPS
+        env:
+          FTP_HOST: ${{ vars.FTP_HOST }}
+          FTP_USER: ${{ vars.FTP_USER }}
+          LFTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_DIR: ${{ vars.FTP_DIR || '/' }}
+        run: |
+          lftp <<EOF
+          set cmd:fail-exit yes
+          set ftp:ssl-force yes
+          set ftp:ssl-protect-data yes
+          set ssl:verify-certificate yes
+          set xfer:use-temp-file yes
+          set net:max-retries 2
+          set net:timeout 30
+          open --user "$FTP_USER" --env-password "ftp://$FTP_HOST"
+          mirror --reverse --overwrite --verbose --no-perms release/ "$FTP_DIR"
+          EOF
+
+      - name: Check the icon
+        if: vars.TEAMSSTATUS_URL != ''
+        env:
+          TEAMSSTATUS_URL: ${{ vars.TEAMSSTATUS_URL }}
+        run: |
+          type=$(curl -fsS -o /dev/null -w '%{content_type}' "$TEAMSSTATUS_URL")
+          echo "Content-Type: $type"
+          [[ $type == image/svg+xml* ]]
